@@ -1,4 +1,4 @@
-module aqwari.net/xml
+module github.com/vraut-pdgc/go-xml
 
 go 1.15
 
