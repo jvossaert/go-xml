@@ -16,10 +16,10 @@ import (
 // A Config holds user-defined overrides and filters that are used when
 // generating Go source code from an xsd document.
 type Config struct {
-	logger          Logger
-	loglevel        int
-	namespaces      []string
-	pkgname         string
+	logger     Logger
+	loglevel   int
+	namespaces []string
+	pkgname    string
 	// load xsd imports recursively into memory before parsing
 	followImports   bool
 	preprocessType  typeTransform
@@ -42,6 +42,9 @@ type Config struct {
 	// if populated, only types that are true in this map
 	// will be selected.
 	allowTypes map[xml.Name]bool
+
+	// keep track of files that are read already to avoid reading it again
+	filesRead map[string]bool
 }
 
 type typeTransform func(xsd.Schema, xsd.Type) xsd.Type
