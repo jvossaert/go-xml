@@ -21,9 +21,10 @@ func nonTrivialBuiltin(t xsd.Type) bool {
 		return false
 	}
 	switch b {
-	case xsd.Base64Binary, xsd.HexBinary,
-		xsd.Date, xsd.Time, xsd.DateTime,
-		xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth:
+	case xsd.Base64Binary, xsd.HexBinary:
+		//case xsd.Base64Binary, xsd.HexBinary,
+		//	xsd.Date, xsd.Time, xsd.DateTime,
+		//	xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth:
 		return true
 	}
 	return false
@@ -48,19 +49,19 @@ var builtinTbl = []ast.Expr{
 	xsd.Base64Binary:  &ast.ArrayType{Elt: &ast.Ident{Name: "byte"}},
 	xsd.Boolean:       &ast.Ident{Name: "bool"},
 	xsd.Byte:          &ast.Ident{Name: "byte"},
-	xsd.Date:          &ast.Ident{Name: "time.Time"},
-	xsd.DateTime:      &ast.Ident{Name: "time.Time"},
+	xsd.Date:          &ast.Ident{Name: "string"},
+	xsd.DateTime:      &ast.Ident{Name: "string"},
 	xsd.Decimal:       &ast.Ident{Name: "float64"},
 	xsd.Double:        &ast.Ident{Name: "float64"},
 	// the "duration" built-in is especially broken, so we
 	// don't parse it at all.
 	xsd.Duration:           &ast.Ident{Name: "string"},
 	xsd.Float:              &ast.Ident{Name: "float32"},
-	xsd.GDay:               &ast.Ident{Name: "time.Time"},
-	xsd.GMonth:             &ast.Ident{Name: "time.Time"},
-	xsd.GMonthDay:          &ast.Ident{Name: "time.Time"},
-	xsd.GYear:              &ast.Ident{Name: "time.Time"},
-	xsd.GYearMonth:         &ast.Ident{Name: "time.Time"},
+	xsd.GDay:               &ast.Ident{Name: "string"},
+	xsd.GMonth:             &ast.Ident{Name: "string"},
+	xsd.GMonthDay:          &ast.Ident{Name: "string"},
+	xsd.GYear:              &ast.Ident{Name: "string"},
+	xsd.GYearMonth:         &ast.Ident{Name: "string"},
 	xsd.HexBinary:          &ast.ArrayType{Elt: &ast.Ident{Name: "byte"}},
 	xsd.Int:                &ast.Ident{Name: "int"},
 	xsd.Integer:            &ast.Ident{Name: "int"},

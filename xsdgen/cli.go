@@ -54,6 +54,7 @@ func (cfg *Config) GenCode(data ...[]byte) (*Code, error) {
 // GenAST creates an *ast.File containing type declarations and
 // associated methods based on a set of XML schema.
 func (cfg *Config) GenAST(files ...string) (*ast.File, error) {
+	cfg.filesRead = make(map[string]bool)
 	data, err := cfg.readFiles(files...)
 	code, err := cfg.GenCode(data...)
 	if err != nil {
@@ -62,14 +63,20 @@ func (cfg *Config) GenAST(files ...string) (*ast.File, error) {
 	return code.GenAST()
 }
 
-func (cfg *Config) readFiles(files ...string) ([][]byte,error) {
+func (cfg *Config) readFiles(files ...string) ([][]byte, error) {
 	data := make([][]byte, 0, len(files))
 	for _, filename := range files {
+		if _, ok := cfg.filesRead[filename]; ok {
+			// skip reading the file again
+			continue
+		}
+
 		b, err := ioutil.ReadFile(filename)
 		if err != nil {
 			return nil, err
 		}
 		cfg.debugf("read %s", filename)
+		cfg.filesRead[filename] = true
 		if cfg.followImports {
 			importedRefs, err := xsd.Imports(b)
 			if err != nil {

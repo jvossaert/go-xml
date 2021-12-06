@@ -110,7 +110,7 @@ func (c *Code) NameOf(name xml.Name) string {
 		return "NOTFOUND" + name.Local
 	}
 
-	switch b := c.cfg.flatten1(t, func(xsd.Type) {}, 0).(type) {
+	switch b := c.cfg.flatten1(t, map[xml.Name]xsd.Type{}, func(xsd.Type) {}, 0).(type) {
 	case xsd.Builtin:
 		return c.NameOf(b.Name())
 	}
@@ -371,6 +371,8 @@ func (cfg *Config) flatten(types map[xml.Name]xsd.Type) []xsd.Type {
 	push := func(t xsd.Type) {
 		result = append(result, t)
 	}
+
+	var flattenedTypes = map[xml.Name]xsd.Type{}
 	for _, t := range types {
 		if xsd.XMLName(t).Local == "_self" {
 			continue
@@ -384,7 +386,7 @@ func (cfg *Config) flatten(types map[xml.Name]xsd.Type) []xsd.Type {
 				continue
 			}
 		}
-		if t := cfg.flatten1(t, push, 0); t != nil {
+		if t := cfg.flatten1(t, flattenedTypes, push, 0); t != nil {
 			push(t)
 		}
 	}
@@ -402,7 +404,12 @@ func dedup(types []xsd.Type) (unique []xsd.Type) {
 	return unique
 }
 
-func (cfg *Config) flatten1(t xsd.Type, push func(xsd.Type), depth int) xsd.Type {
+func (cfg *Config) flatten1(t xsd.Type, flattenedTypes map[xml.Name]xsd.Type, push func(xsd.Type), depth int) xsd.Type {
+	if res, ok := flattenedTypes[xsd.XMLName(t)]; ok {
+		return res
+	}
+	flattenedTypes[xsd.XMLName(t)] = t
+
 	const maxDepth = 1000
 	if depth > maxDepth {
 		return t
@@ -463,6 +470,8 @@ func (cfg *Config) flatten1(t xsd.Type, push func(xsd.Type), depth int) xsd.Type
 			t.Doc = "Must be at least " + strconv.Itoa(t.Restriction.MinLength) + " items long"
 			return t
 		}
+
+		flattenedTypes[xsd.XMLName(t)] = t.Base
 		return t.Base
 	case *xsd.ComplexType:
 		// We can "unpack" a struct if it is extending a simple
@@ -478,30 +487,33 @@ func (cfg *Config) flatten1(t xsd.Type, push func(xsd.Type), depth int) xsd.Type
 					t.Name.Local, xsd.XMLName(t.Base))
 				switch b := t.Base.(type) {
 				case xsd.Builtin:
+					flattenedTypes[xsd.XMLName(t)] = b
 					return b
 				case *xsd.SimpleType:
-					return cfg.flatten1(t.Base, push, depth+1)
+					res := cfg.flatten1(t.Base, flattenedTypes, push, depth+1)
+					flattenedTypes[xsd.XMLName(t)] = res
+					return res
 				}
 			}
 		}
 		// We can flatten a struct field if its type does not
 		// need additional methods for unmarshalling.
 		for i, el := range t.Elements {
-			el.Type = cfg.flatten1(el.Type, push, depth+1)
+			el.Type = cfg.flatten1(el.Type, flattenedTypes, push, depth+1)
 			t.Elements[i] = el
 			push(el.Type)
 			cfg.debugf("element %s %T(%s): %v", el.Name.Local, t,
 				xsd.XMLName(t).Local, xsd.XMLName(el.Type))
 		}
 		for i, attr := range t.Attributes {
-			attr.Type = cfg.flatten1(attr.Type, push, depth+1)
+			attr.Type = cfg.flatten1(attr.Type, flattenedTypes, push, depth+1)
 			t.Attributes[i] = attr
 			push(attr.Type)
 			cfg.debugf("attribute %s %T(%s): %v", attr.Name.Local, t,
 				xsd.XMLName(t).Local, xsd.XMLName(attr.Type))
 		}
 
-		t.Base = cfg.flatten1(t.Base, push, depth+1)
+		t.Base = cfg.flatten1(t.Base, flattenedTypes, push, depth+1)
 
 		// We expand all complexTypes to merge all of the fields from
 		// their ancestors, so generated code has no dependencies
@@ -684,10 +696,15 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 		if el.Nillable || el.Optional {
 			options = ",omitempty"
 		}
-		tag := fmt.Sprintf(`xml:"%s %s%s"`, el.Name.Space, el.Name.Local, options)
+		tag := fmt.Sprintf(`json:"%s%s" xml:"%s %s%s"`, el.Name.Local, options, el.Name.Space, el.Name.Local, options)
 		base, err := cfg.expr(el.Type)
 		if err != nil {
 			return nil, fmt.Errorf("%s element %s: %v", t.Name.Local, el.Name.Local, err)
+		}
+
+		// optional elements should use pointers
+		if (el.Nillable || el.Optional) && el.Default == "" {
+			base = &ast.StarExpr{X: base}
 		}
 		name := namegen.element(el.Name)
 		if el.Wildcard {
@@ -743,9 +760,14 @@ func (cfg *Config) genComplexType(t *xsd.ComplexType) ([]spec, error) {
 		} else {
 			tag = fmt.Sprintf(`xml:"%s,attr%s"`, attr.Name.Local, options)
 		}
+		tag = fmt.Sprintf(`json:"%s%s" %s`, attr.Name.Local, options, tag)
 		base, err := cfg.expr(attr.Type)
 		if err != nil {
 			return nil, fmt.Errorf("%s attribute %s: %v", t.Name.Local, attr.Name.Local, err)
+		}
+		// optional attributes should use pointers
+		if attr.Optional {
+			base = &ast.StarExpr{X: base}
 		}
 		cfg.debugf("adding %s attribute %s as %v", t.Name.Local, attr.Name.Local, base)
 		name := namegen.attribute(attr.Name)
@@ -818,9 +840,11 @@ func (cfg *Config) genComplexTypeMethods(t *xsd.ComplexType, overrides []fieldOv
 			overlay.T = (*T)(t)
 			{{range .Overrides}}
 			overlay.{{.FieldName}} = (*{{.ToType}})(&overlay.T.{{.FieldName}})
-			{{if .DefaultValue -}}
-			// overlay.{{.FieldName}} = {{.DefaultValue}}
-			{{end -}}
+			{{if .DefaultValue}}
+			if *overlay.{{.FieldName}} == "" {
+				*overlay.{{.FieldName}} = "{{.DefaultValue}}"
+			}
+			{{end}}
 			{{end}}
 
 			return d.DecodeElement(&overlay, &start)
@@ -974,27 +998,27 @@ func (cfg *Config) genSimpleListSpec(t *xsd.SimpleType) ([]spec, error) {
 			}
 			return nil
 		`)
-	case xsd.Date, xsd.DateTime, xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth, xsd.Time:
-		marshalFn = marshalFn.Body(`
-			result := make([][]byte, 0, len(*x))
-			for _, v := range *x {
-				if b, err := v.MarshalText(); err != nil {
-					return result, err
-				} else {
-					result = append(result, b)
-				}
-			}
-			return bytes.Join(result, []byte(" "))
-		`)
-		unmarshalFn = unmarshalFn.Body(`
-			for _, v := range bytes.Fields(text) {
-				var t %s
-				if err := t.UnmarshalText(v); err != nil {
-					return err
-				}
-				*x = append(*x, t)
-			}
-		`, builtinExpr(base.(xsd.Builtin)).(*ast.Ident).Name)
+	//case xsd.Date, xsd.DateTime, xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth, xsd.Time:
+	//	marshalFn = marshalFn.Body(`
+	//		result := make([][]byte, 0, len(*x))
+	//		for _, v := range *x {
+	//			if b, err := v.MarshalText(); err != nil {
+	//				return result, err
+	//			} else {
+	//				result = append(result, b)
+	//			}
+	//		}
+	//		return bytes.Join(result, []byte(" "))
+	//	`)
+	//	unmarshalFn = unmarshalFn.Body(`
+	//		for _, v := range bytes.Fields(text) {
+	//			var t %s
+	//			if err := t.UnmarshalText(v); err != nil {
+	//				return err
+	//			}
+	//			*x = append(*x, t)
+	//		}
+	//	`, builtinExpr(base.(xsd.Builtin)).(*ast.Ident).Name)
 	case xsd.Long:
 		marshalFn = marshalFn.Body(`
 			result := make([][]byte, 0, len(*x))

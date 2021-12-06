@@ -118,7 +118,7 @@ func genXSDTests(cfg xsdgen.Config, data []byte, pkg string) (code, tests *ast.F
 		fields = append(fields,
 			gen.Public(elem.Name.Local),
 			ast.NewIdent(main.NameOf(elem.Type)),
-			gen.String(fmt.Sprintf(`xml:"%s %s"`, elem.Name.Space, elem.Name.Local)))
+			gen.String(fmt.Sprintf(`json:"%s" xml:"%s %s"`, elem.Name.Local, elem.Name.Space, elem.Name.Local)))
 	}
 	expr, err := gen.ToString(gen.Struct(fields...))
 	if err != nil {
