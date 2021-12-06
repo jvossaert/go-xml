@@ -617,66 +617,67 @@ func (cfg *Config) addStandardHelpers() {
 	}
 
 	cfg.helperTypes = make(map[xml.Name]spec)
-	timeTypes := map[xsd.Builtin]string{
-		xsd.Date:       "2006-01-02",
-		xsd.DateTime:   "2006-01-02T15:04:05.999999999",
-		xsd.GDay:       "---02",
-		xsd.GMonth:     "--01",
-		xsd.GMonthDay:  "--01-02",
-		xsd.GYear:      "2006",
-		xsd.GYearMonth: "2006-01",
-		xsd.Time:       "15:04:05.999999999",
-	}
-
-	for timeType, timeSpec := range timeTypes {
-		name := "xsd" + timeType.String()
-		cfg.helperTypes[xsd.XMLName(timeType)] = spec{
-			name:    name,
-			expr:    builtinExpr(timeType),
-			private: true,
-			xsdType: timeType,
-			methods: []*ast.FuncDecl{
-				gen.Func("UnmarshalText").
-					Receiver("t *"+name).
-					Args("text []byte").
-					Returns("error").
-					Body(`return _unmarshalTime(text, (*time.Time)(t), %q)`, timeSpec).
-					MustDecl(),
-				gen.Func("MarshalText").
-					Receiver("t "+name).
-					Returns("[]byte", "error").
-					Body(`return _marshalTime((time.Time)(t), %q)`, timeSpec).
-					MustDecl(),
-				// workaround golang.org/issues/11939
-				gen.Func("MarshalXML").
-					Receiver("t "+name).
-					Args("e *xml.Encoder", "start xml.StartElement").
-					Returns("error").
-					Body(`
-						if (time.Time)(t).IsZero() {
-							return nil
-						}
-						m, err := t.MarshalText()
-						if err != nil {
-							return err
-						}
-						return e.EncodeElement(m, start)
-					`).MustDecl(),
-				gen.Func("MarshalXMLAttr").
-					Receiver("t "+name).
-					Args("name xml.Name").
-					Returns("xml.Attr", "error").
-					Body(`
-						if (time.Time)(t).IsZero() {
-							return xml.Attr{}, nil
-						}
-						m, err := t.MarshalText()
-						return xml.Attr{Name: name, Value: string(m)}, err
-					`).MustDecl(),
-			},
-			helperFuncs: []string{"_unmarshalTime", "_marshalTime"},
-		}
-	}
+	// let the time types be mapped to string itself
+	//timeTypes := map[xsd.Builtin]string{
+	//	xsd.Date:       "2006-01-02",
+	//	xsd.DateTime:   "2006-01-02T15:04:05.999999999",
+	//	xsd.GDay:       "---02",
+	//	xsd.GMonth:     "--01",
+	//	xsd.GMonthDay:  "--01-02",
+	//	xsd.GYear:      "2006",
+	//	xsd.GYearMonth: "2006-01",
+	//	xsd.Time:       "15:04:05.999999999",
+	//}
+	//
+	//for timeType, timeSpec := range timeTypes {
+	//	name := "xsd" + timeType.String()
+	//	cfg.helperTypes[xsd.XMLName(timeType)] = spec{
+	//		name:    name,
+	//		expr:    builtinExpr(timeType),
+	//		private: true,
+	//		xsdType: timeType,
+	//		methods: []*ast.FuncDecl{
+	//			gen.Func("UnmarshalText").
+	//				Receiver("t *"+name).
+	//				Args("text []byte").
+	//				Returns("error").
+	//				Body(`return _unmarshalTime(text, (*time.Time)(t), %q)`, timeSpec).
+	//				MustDecl(),
+	//			gen.Func("MarshalText").
+	//				Receiver("t "+name).
+	//				Returns("[]byte", "error").
+	//				Body(`return _marshalTime((time.Time)(t), %q)`, timeSpec).
+	//				MustDecl(),
+	//			// workaround golang.org/issues/11939
+	//			gen.Func("MarshalXML").
+	//				Receiver("t "+name).
+	//				Args("e *xml.Encoder", "start xml.StartElement").
+	//				Returns("error").
+	//				Body(`
+	//					if (time.Time)(t).IsZero() {
+	//						return nil
+	//					}
+	//					m, err := t.MarshalText()
+	//					if err != nil {
+	//						return err
+	//					}
+	//					return e.EncodeElement(m, start)
+	//				`).MustDecl(),
+	//			gen.Func("MarshalXMLAttr").
+	//				Receiver("t "+name).
+	//				Args("name xml.Name").
+	//				Returns("xml.Attr", "error").
+	//				Body(`
+	//					if (time.Time)(t).IsZero() {
+	//						return xml.Attr{}, nil
+	//					}
+	//					m, err := t.MarshalText()
+	//					return xml.Attr{Name: name, Value: string(m)}, err
+	//				`).MustDecl(),
+	//		},
+	//		helperFuncs: []string{"_unmarshalTime", "_marshalTime"},
+	//	}
+	//}
 
 	cfg.helperTypes[xsd.XMLName(xsd.HexBinary)] = spec{
 		name:    "xsd" + xsd.HexBinary.String(),

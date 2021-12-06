@@ -974,27 +974,27 @@ func (cfg *Config) genSimpleListSpec(t *xsd.SimpleType) ([]spec, error) {
 			}
 			return nil
 		`)
-	case xsd.Date, xsd.DateTime, xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth, xsd.Time:
-		marshalFn = marshalFn.Body(`
-			result := make([][]byte, 0, len(*x))
-			for _, v := range *x {
-				if b, err := v.MarshalText(); err != nil {
-					return result, err
-				} else {
-					result = append(result, b)
-				}
-			}
-			return bytes.Join(result, []byte(" "))
-		`)
-		unmarshalFn = unmarshalFn.Body(`
-			for _, v := range bytes.Fields(text) {
-				var t %s
-				if err := t.UnmarshalText(v); err != nil {
-					return err
-				}
-				*x = append(*x, t)
-			}
-		`, builtinExpr(base.(xsd.Builtin)).(*ast.Ident).Name)
+	//case xsd.Date, xsd.DateTime, xsd.GDay, xsd.GMonth, xsd.GMonthDay, xsd.GYear, xsd.GYearMonth, xsd.Time:
+	//	marshalFn = marshalFn.Body(`
+	//		result := make([][]byte, 0, len(*x))
+	//		for _, v := range *x {
+	//			if b, err := v.MarshalText(); err != nil {
+	//				return result, err
+	//			} else {
+	//				result = append(result, b)
+	//			}
+	//		}
+	//		return bytes.Join(result, []byte(" "))
+	//	`)
+	//	unmarshalFn = unmarshalFn.Body(`
+	//		for _, v := range bytes.Fields(text) {
+	//			var t %s
+	//			if err := t.UnmarshalText(v); err != nil {
+	//				return err
+	//			}
+	//			*x = append(*x, t)
+	//		}
+	//	`, builtinExpr(base.(xsd.Builtin)).(*ast.Ident).Name)
 	case xsd.Long:
 		marshalFn = marshalFn.Body(`
 			result := make([][]byte, 0, len(*x))
